@@ -4,23 +4,31 @@ var myCheerio = require('cheerio');
 var myIconv = require('iconv-lite');
 require('date-utils');
 var mysql = require('./mysql.js');//mysql在相同文件夹下的mysql.js
-var schedule = require('node-schedule');//定时
 
 var source_name = "网易新闻";
 var domain = 'https://news.163.com/';
 var myEncoding = "utf-8";
 var seedURL = 'https://news.163.com/';
 
+// 匹配提取网页中的信息
+// 用于提取所有的连接供后续筛选
 var seedURL_format = "$('a')";
+// 用于匹配提取关键字
 var keywords_format = " $('meta[name=\"keywords\"]').eq(0).attr(\"content\")";
-var title_format = "$('title').text()";
+// 用于匹配提取标题
+var title_format = "$('.post_title').text()";
+// 用于匹配提取日期
 var date_format = "$('html#ne_wrap').attr(\"data\-publishtime\")";//
+// 用于匹配提取作者
 var author_format = "$('.ep-editor').text()";
-var content_format = "$('#endText').text()";
+// 用于匹配提取内容
+var content_format = "$('.post_body').text()";
 var desc_format = " $('meta[name=\"description\"]').eq(0).attr(\"content\")";
 var source_format = "$('#ne_article_source').text()";
+// 用于匹配判别新闻网址
 var url_reg = /\/(\d{2})\/(\d{4})\/(\d{2})\/([A-Z0-9]{16}).html/;
-
+var url_reg = /\/(\d{2})\/(\d{4})\/(\d{2})\/([A-Z0-9]{16}).html/;
+//var url_reg = "https://www.163.com/news/article/HPKKM6IU0001899N.html"
 
 var regExp = /((\d{4}|\d{2})(\-|\/|\.)\d{1,2}\3\d{1,2})|(\d{4}年\d{1,2}月\d{1,2}日)/
 let n = 0
@@ -41,45 +49,46 @@ function request(url, callback) {
     myRequest(options, callback)
 };
 
-//！定时执行
-var rule = new schedule.RecurrenceRule();
-var times = [1,3,5,7,9,11,13,15,17,19,21,23]; //每2h自动执行
-var times2 = 01; //定义在第几分钟执行
-rule.hour = times;
-rule.minute = times2;
-
-//定时执行httpGet()函数
-schedule.scheduleJob(rule, function() {
-    seedget();
-});
+seedget();
 
 function seedget() {
-    request(seedURL, function (err, res, body) { //读取种子页面
+    //读取种子页面
+    request(seedURL, function (err, res, body) { 
         try {
             // 用iconv转换编码
-            var html = myIconv.decode(body, 'GBK');
-            // console.log(html);
-            //准备用cheerio解析html
+            var html = myIconv.decode(body, 'UTF-8');
+            console.log("----》读取种子页面")
+            //console.log(html);
+            // 准备用cheerio解析html
             var $ = myCheerio.load(html, { decodeEntities: true });
         } catch (e) { console.log('读种子页面并转码出错：' + e) };
+
         var seedurl_news;
+        
         try {
             seedurl_news = eval(seedURL_format);
+            console.log("----》读取种子页面中所有a连接")
         } catch (e) { console.log('url列表所处的html块识别出错：' + e) };
         seedurl_news.each(function (i, e) { //遍历种子页面里所有的a链接
             var myURL = "";
             try {
-                //得到具体新闻url
+
+                // 得到具体新闻url
                 var href = "";
                 href = $(e).attr("href");
                 if (href == undefined) return;
-                if (href.toLowerCase().indexOf('https://') >= 0 || href.toLowerCase().indexOf('http://') >= 0) myURL = href; //http://开头的
+                // 要判断其是http://或https://开头的
+                if (href.toLowerCase().indexOf('https://') >= 0 || href.toLowerCase().indexOf('http://') >= 0) myURL = href; 
                 else if (href.startsWith('//')) myURL = 'http:' + href; ////开头的
                 else myURL = seedURL.substr(0, seedURL.lastIndexOf('/') + 1) + href; //其他
 
             } catch (e) { console.log('识别种子页面中的新闻链接出错：' + e) }
-
-            if (!url_reg.test(myURL)) return; //检验是否符合新闻url的正则表达式
+            
+            //检验是否符合新闻url的正则表达式
+            console.log("----》当前新闻url")
+            console.log(myURL);
+            if (!url_reg.test(myURL)) return; 
+            console.log("----》筛选后当前新闻url")
             console.log(myURL);
 
             var fetch_url_Sql = 'select url from fetches where url=?';
@@ -103,7 +112,7 @@ function newsGet(myURL) { //读取新闻页面
             // res.on('html_news',function(res){
             //     var html_news = myIconv.decode(String(body), 'GBK'); //用iconv转换编码
             // })
-            var html_news = myIconv.decode(new Buffer(body), 'GBK'); //用iconv转换编码
+            var html_news = myIconv.decode(new Buffer(body), 'UTF-8'); //用iconv转换编码
             // console.log(html_news);
             //准备用cheerio解析html_news
             var $ = myCheerio.load(html_news, { decodeEntities: true });
@@ -130,6 +139,7 @@ function newsGet(myURL) { //读取新闻页面
 
         if (title_format == "") fetch.title = ""
         else fetch.title = eval(title_format); //标题
+        console.log(fetch.title);
         console.log(date_format);
         if (date_format != "") fetch.publish_date = eval(date_format); //刊登日期   
         console.log('date: ' + fetch.publish_date);
@@ -156,7 +166,7 @@ function newsGet(myURL) { //读取新闻页面
 
         // console.log("keywords: " + fetch.keywords);
         // console.log("description: " + fetch.desc);;
-        console.log("#####content: " + $('div#endText').text());
+        console.log("#####content: " + fetch.content);
         
         if (fetch.content) {
             // var filename = source_name + "_" + (new Date()).toFormat("YYYY-MM-DD") +
